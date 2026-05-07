@@ -1,0 +1,8 @@
+torch>=2.0
+numpy>=1.24
+matplotlib>=3.7
+ruamel.yaml>=0.17
+gymnasium>=0.28
+eclipse-sumo>=1.21
+sumolib>=1.21
+libsumo>=1.21

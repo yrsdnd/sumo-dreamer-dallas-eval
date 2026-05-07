@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- Round-1 audit-fix 2026-04-28: removed duplicate output.add.xml,
+     added explicit time + processing blocks so the cfg is self-contained
+     and matches the SafeDreamer-PID env's contract. -->
+
+<sumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
+
+    <input>
+        <net-file value="osm.net.xml.gz"/>
+        <route-files value="osm.bus.trips.xml,osm.motorcycle.trips.xml,osm.passenger.trips.xml"/>
+        <additional-files value="output.add.xml"/>
+    </input>
+
+    <time>
+        <step-length value="0.1"/>
+    </time>
+
+    <processing>
+        <collision.action value="warn"/>
+        <collision.check-junctions value="true"/>
+        <time-to-teleport value="-1"/>
+        <ignore-junction-blocker value="60"/>
+        <!-- Skip vehicles whose from→to has no path. A few enrichment
+             trips added in round-1 target edges that are reachable from
+             one direction only (dead-end + one-way combos). Skipping bad
+             trips with a warning is preferable to aborting the whole
+             simulation. Original 5,542 user trips all have valid routes
+             so they are unaffected. -->
+        <ignore-route-errors value="true"/>
+    </processing>
+
+    <report>
+        <no-warnings value="false"/>
+        <verbose value="false"/>
+    </report>
+
+</sumoConfiguration>

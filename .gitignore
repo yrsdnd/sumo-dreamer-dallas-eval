@@ -1,0 +1,30 @@
+# Generated artifacts
+outputs/
+checkpoint/*.pt
+checkpoint/*.part
+*.log
+*.npz
+*.mp4
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.eggs/
+*.egg-info/
+build/
+dist/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# SUMO autogen
+output.add.xml.bak
+edgeData.xml

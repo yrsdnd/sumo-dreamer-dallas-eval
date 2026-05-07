@@ -1,0 +1,364 @@
+defaults:
+
+  logdir: null
+  traindir: null
+  evaldir: null
+  offline_traindir: ''
+  offline_evaldir: ''
+  seed: 0
+  deterministic_run: False
+  steps: 1e6
+  parallel: False
+  eval_every: 1e4
+  eval_episode_num: 10
+  log_every: 1e4
+  reset_every: 0
+  device: 'cuda:0'
+  compile: True
+  precision: 32
+  debug: False
+  video_pred_log: True
+
+  # Environment
+  task: 'dmc_walker_walk'
+  size: [64, 64]
+  envs: 1
+  action_repeat: 2
+  time_limit: 1000
+  grayscale: False
+  prefill: 2500
+  reward_EMA: True
+
+  # Model
+  dyn_hidden: 512
+  dyn_deter: 512
+  dyn_stoch: 32
+  dyn_discrete: 32
+  dyn_rec_depth: 1
+  dyn_mean_act: 'none'
+  dyn_std_act: 'sigmoid2'
+  dyn_min_std: 0.1
+  grad_heads: ['decoder', 'reward', 'cont']
+  units: 512
+  act: 'SiLU'
+  norm: True
+  encoder:
+    {mlp_keys: '$^', cnn_keys: 'image', act: 'SiLU', norm: True, cnn_depth: 32, kernel_size: 4, minres: 4, mlp_layers: 5, mlp_units: 1024, symlog_inputs: True}
+  decoder:
+    {mlp_keys: '$^', cnn_keys: 'image', act: 'SiLU', norm: True, cnn_depth: 32, kernel_size: 4, minres: 4, mlp_layers: 5, mlp_units: 1024, cnn_sigmoid: False, image_dist: mse, vector_dist: symlog_mse, outscale: 1.0}
+  actor:
+    {layers: 2, dist: 'normal', entropy: 3e-4, unimix_ratio: 0.01, std: 'learned', min_std: 0.1, max_std: 1.0, temp: 0.1, lr: 3e-5, eps: 1e-5, grad_clip: 100.0, outscale: 1.0}
+  critic:
+    {layers: 2, dist: 'symlog_disc', slow_target: True, slow_target_update: 1, slow_target_fraction: 0.02, lr: 3e-5, eps: 1e-5, grad_clip: 100.0, outscale: 0.0}
+  reward_head:
+    {layers: 2, dist: 'symlog_disc', loss_scale: 1.0, outscale: 0.0}
+  cont_head:
+    {layers: 2, loss_scale: 1.0, outscale: 1.0}
+  # SafeDreamer-PID additions (off by default → DreamerV3 behaviour unchanged)
+  use_cost: False
+  cost_limit: 2.0
+  cost_weight: 10.0     # per-step upweight applied when cost >= 1.0
+  cost_head:
+    {layers: 5, units: 1024, dist: 'symlog_disc', loss_scale: 1.0, outscale: 1.0}
+  cost_critic:
+    {layers: 2, dist: 'symlog_disc', slow_target: True, slow_target_update: 1, slow_target_fraction: 0.02, lr: 3e-5, eps: 1e-5, grad_clip: 100.0, outscale: 0.0}
+  # PID-Lagrangian gains (osrp_lag preset from SafeDreamer paper).
+  # Tuned 2026-04-27: enable cost-decay warm-up + raise penalty_max to 0.5
+  # because the prior 16-h run saw λ_p saturate at the previous 0.1 cap.
+  # 2026-05-02 (M4 fix): raise penalty_max 0.5 → 1.0. Round-6 log audit
+  # showed 26% saturation rate at the 0.5 cap and a single episode with
+  # cost=172 where pid_o wanted to push past 7.0 but was clipped at 0.5.
+  # Doubling the cap gives the controller honest headroom to react to
+  # pathological episodes while everyday cost levels still sit well below.
+  #   - use_cost_decay: True → start lenient, tighten to cost_limit over training.
+  #     Schedule: init_cost_limit=10 → 8 → 6 → 4 → cost_limit=2 over
+  #     decay_num=4 stages × decay_time_step=200_000 steps = 800k env steps.
+  #   - penalty_max: 1.0 → 10× headroom from the original 0.1 cap.
+  pid:
+    {kp: 0.05, ki: 0.01, kd: 0.01, d_delay: 10, delta_p_ema_alpha: 0.95, delta_d_ema_alpha: 0.95, penalty_max: 1.0, sum_norm: True, diff_norm: False, lagrangian_multiplier_init: 0.001, init_penalty: 0.0, use_cost_decay: True, init_cost_limit: 10.0, decay_time_step: 200000, decay_num: 4, decay_limit_step: 2.0}
+  # How many per-milestone checkpoint_step_XXXX.pt files to keep on disk.
+  # latest.pt is always kept in addition. Each file ≈ 300 MB for the
+  # 26M-param agent, so keep_checkpoints=3 bounds the milestone budget to
+  # ~900 MB. Set to 0 to keep only latest.pt.
+  keep_checkpoints: 3
+  # Wallclock-time termination budget in hours. 0 = disabled (use step
+  # count only). When > 0, dreamer.py main loop exits after that many
+  # real hours regardless of step progress. Set to 36.0 for the
+  # standard 1.5-day Dallas long-run.
+  max_train_hours: 0.0
+  dyn_scale: 0.5
+  rep_scale: 0.1
+  kl_free: 1.0
+  weight_decay: 0.0
+  unimix_ratio: 0.01
+  initial: 'learned'
+
+  # Training
+  batch_size: 16
+  batch_length: 64
+  train_ratio: 512
+  pretrain: 100
+  model_lr: 1e-4
+  opt_eps: 1e-8
+  grad_clip: 1000
+  dataset_size: 1000000
+  opt: 'adam'
+
+  # Behavior.
+  discount: 0.997
+  discount_lambda: 0.95
+  imag_horizon: 15
+  imag_gradient: 'dynamics'
+  imag_gradient_mix: 0.0
+  eval_state_mean: False
+
+  # Exploration
+  expl_behavior: 'greedy'
+  expl_until: 0
+  expl_extr_scale: 0.0
+  expl_intr_scale: 1.0
+  disag_target: 'stoch'
+  disag_log: True
+  disag_models: 10
+  disag_offset: 1
+  disag_layers: 4
+  disag_units: 400
+  disag_action_cond: False
+
+dmc_proprio:
+  steps: 5e5
+  action_repeat: 2
+  envs: 4
+  train_ratio: 512
+  video_pred_log: false
+  encoder: {mlp_keys: '.*', cnn_keys: '$^'}
+  decoder: {mlp_keys: '.*', cnn_keys: '$^'}
+
+dmc_vision:
+  steps: 1e6
+  action_repeat: 2
+  envs: 4
+  train_ratio: 512
+  video_pred_log: true
+  encoder: {mlp_keys: '$^', cnn_keys: 'image'}
+  decoder: {mlp_keys: '$^', cnn_keys: 'image'}
+
+crafter:
+  task: crafter_reward
+  step: 1e6
+  action_repeat: 1
+  envs: 1
+  train_ratio: 512
+  video_pred_log: true
+  dyn_hidden: 1024
+  dyn_deter: 4096
+  units: 1024
+  encoder: {mlp_keys: '$^', cnn_keys: 'image', cnn_depth: 96, mlp_layers: 5, mlp_units: 1024}
+  decoder: {mlp_keys: '$^', cnn_keys: 'image', cnn_depth: 96, mlp_layers: 5, mlp_units: 1024}
+  actor: {layers: 5, dist: 'onehot', std: 'none'}
+  value: {layers: 5}
+  reward_head: {layers: 5}
+  cont_head: {layers: 5}
+  imag_gradient: 'reinforce'
+
+atari100k:
+  steps: 4e5
+  envs: 1
+  action_repeat: 4
+  train_ratio: 1024
+  video_pred_log: true
+  eval_episode_num: 100
+  actor: {dist: 'onehot', std: 'none'}
+  imag_gradient: 'reinforce'
+  stickey: False
+  lives: unused
+  noops: 30
+  resize: opencv
+  actions: needed
+  time_limit: 108000
+
+minecraft:
+  task: minecraft_diamond
+  step: 1e8
+  parallel: True
+  envs: 16
+  # no eval
+  eval_episode_num: 0
+  eval_every: 1e4
+  action_repeat: 1
+  train_ratio: 16
+  video_pred_log: true
+  dyn_hidden: 1024
+  dyn_deter: 4096
+  units: 1024
+  encoder: {mlp_keys: 'inventory|inventory_max|equipped|health|hunger|breath|obs_reward', cnn_keys: 'image', cnn_depth: 96, mlp_layers: 5, mlp_units: 1024}
+  decoder: {mlp_keys: 'inventory|inventory_max|equipped|health|hunger|breath', cnn_keys: 'image', cnn_depth: 96, mlp_layers: 5, mlp_units: 1024}
+  actor: {layers: 5, dist: 'onehot', std: 'none'}
+  value: {layers: 5}
+  reward_head: {layers: 5}
+  cont_head: {layers: 5}
+  imag_gradient: 'reinforce'
+  break_speed: 100.0
+  time_limit: 36000
+
+memorymaze:
+  steps: 1e8
+  action_repeat: 2
+  actor: {dist: 'onehot', std: 'none'}
+  imag_gradient: 'reinforce'
+  task: 'memorymaze_9x9'
+
+debug:
+  debug: True
+  pretrain: 1
+  prefill: 1
+  batch_size: 10
+  batch_length: 20
+
+# SafeDreamer-PID on SUMO (numeric-only)
+sumo:
+  task: sumo_subregion
+  steps: 1e7
+  envs: 1
+  action_repeat: 1
+  prefill: 2000
+  time_limit: 3000      # 300 s at 0.1 s step
+  video_pred_log: false
+  compile: False        # libsumo in-process; torch.compile has issues with the env boundary
+  device: 'cpu'         # default to CPU unless user flips to cuda
+  train_ratio: 512
+  eval_episode_num: 0
+  use_cost: True
+  cost_limit: 2.0
+  cost_weight: 10.0
+  grad_heads: ['decoder', 'reward', 'cont', 'cost']
+  encoder: {mlp_keys: '.*', cnn_keys: '$^', mlp_layers: 5, mlp_units: 1024, symlog_inputs: True}
+  decoder: {mlp_keys: '.*', cnn_keys: '$^', mlp_layers: 5, mlp_units: 1024, vector_dist: symlog_mse}
+  # Actor entropy floor raised on 2026-04-27 to address the -1.57 nats collapse
+  # observed at iters 8-12 of the brief-train audit. With min_std=0.1 the 2D
+  # Gaussian's entropy floor is H ≈ 2·(0.5·log(2πe·0.01)) ≈ -1.77 nats — and
+  # the actor was hitting it. Raising to min_std=0.2 lifts the floor to
+  # H ≈ -0.20 nats (still allows gradual concentration once Q-values stabilise
+  # but prevents deep collapse during early training). Entropy bonus also
+  # bumped 3e-4 → 1e-3 so the bonus term competes more with the Q-gradient.
+  actor: {dist: 'normal', entropy: 1e-3, min_std: 0.2}
+  imag_gradient: 'dynamics'
+
+# Ablation baseline: same SUMO env, pure DreamerV3 (no cost machinery)
+sumo_noSafe:
+  task: sumo_subregion
+  steps: 1e7
+  envs: 1
+  action_repeat: 1
+  prefill: 2000
+  time_limit: 3000
+  video_pred_log: false
+  compile: False
+  device: 'cpu'
+  train_ratio: 512
+  eval_episode_num: 0
+  use_cost: False
+  grad_heads: ['decoder', 'reward', 'cont']
+  encoder: {mlp_keys: '.*', cnn_keys: '$^', mlp_layers: 5, mlp_units: 1024, symlog_inputs: True}
+  decoder: {mlp_keys: '.*', cnn_keys: '$^', mlp_layers: 5, mlp_units: 1024, vector_dist: symlog_mse}
+  # Same actor-collapse mitigation as `sumo` preset (see comment there).
+  actor: {dist: 'normal', entropy: 1e-3, min_std: 0.2}
+  imag_gradient: 'dynamics'
+
+# Round-2 training scenario: user-built Dallas-area city
+# (envs/sumo_city_dallas/osm.sumocfg). 1728 drivable edges, 2009 junctions,
+# 15 actuated traffic lights, 5896 trips/h with 3-5% dangerous drivers.
+# All other settings inherit from `sumo` preset above.
+sumo_dallas:
+  task: sumo_dallas_city
+  steps: 1e7
+  envs: 1
+  action_repeat: 1
+  prefill: 2000
+  time_limit: 3000
+  video_pred_log: false
+  compile: False
+  device: 'cpu'
+  train_ratio: 512
+  eval_episode_num: 0
+  use_cost: True
+  cost_limit: 2.0
+  cost_weight: 10.0
+  grad_heads: ['decoder', 'reward', 'cont', 'cost']
+  encoder: {mlp_keys: '.*', cnn_keys: '$^', mlp_layers: 5, mlp_units: 1024, symlog_inputs: True}
+  decoder: {mlp_keys: '.*', cnn_keys: '$^', mlp_layers: 5, mlp_units: 1024, vector_dist: symlog_mse}
+  actor: {dist: 'normal', entropy: 1e-3, min_std: 0.2}
+  imag_gradient: 'dynamics'
+
+# Long-run Dallas training preset. Designed for 1.5-day (36 h) wallclock
+# runs on a developer laptop — emits checkpoint snapshots every ~30 min,
+# prints progress every 60 s, never terminates by step count (5e7 is the
+# safety cap, but max_train_hours=36 will trigger first).
+sumo_dallas_long:
+  task: sumo_dallas_city
+  steps: 3e5                       # 300k step cap (round-7 follow-up:
+                                    # was 4.5e5). Round-7 redesign — queue-
+                                    # based insertion + broadened curriculum —
+                                    # makes 300k the new convergence target;
+                                    # the 450k buffer is no longer needed
+                                    # because traffic-density exposure is
+                                    # 14× more efficient per env step.
+  envs: 4                           # was 1 → 3 → 4 — parallel SUMO subprocesses
+                                    # using all 4 of M1 Air's perf cores.
+                                    # ~3.3-3.5× wallclock speedup. Same
+                                    # algorithm + same data quality.
+                                    # train_ratio left unchanged because
+                                    # tools.Every() handles parallel envs
+                                    # automatically.
+  parallel: True                    # MUST be True when envs > 1 — wraps each
+                                    # SumoEnv in its own subprocess so the
+                                    # libsumo / traci "default" connection
+                                    # doesn't conflict across envs. Default in
+                                    # configs.yaml:11 is False (single env).
+  action_repeat: 1
+  prefill: 6000                    # was 2000 — proportional to envs=3 so the
+                                    # initial replay-buffer warm-up still
+                                    # delivers 2000 calls of random data.
+  time_limit: 18000                # 2026-05-02 (M1 fix): 6000→18000 (10 min→30 min).
+                                    # The 10-min cap forced every episode to terminate
+                                    # in the early sparse-traffic phase of the 1-hour
+                                    # scenario. 30 min lets traffic naturally build to
+                                    # ~150-200 concurrent vehicles within a single
+                                    # episode. Matches DreamerV3 Minecraft pattern of
+                                    # long episodes with no special temporal randomization.
+  video_pred_log: false
+  compile: False
+  device: 'mps'                    # Round-6 (2026-05-02): Apple M1 GPU after macOS
+                                    # Tahoe 26.4.1 upgrade. PyTorch's MPS backend now
+                                    # detects and accepts the integrated GPU. Resume
+                                    # from the step-21k checkpoint loads CPU-saved
+                                    # tensors onto MPS via map_location at
+                                    # dreamer.py:453. Bench: ~1.7x speedup on the
+                                    # 1024² matmuls that dominate WM gradient steps;
+                                    # smaller ops (RSSM, GRU) get ~0.7x — net ~1.5x
+                                    # for typical training. Set
+                                    # PYTORCH_ENABLE_MPS_FALLBACK=1 in launch shell
+                                    # so any unsupported op silently falls back to CPU.
+  train_ratio: 512
+  eval_episode_num: 0
+  eval_every: 5000                 # checkpoint every ~30 min on M1/Air
+  log_every: 200                   # was 100 — halve scalar I/O for speed
+  keep_checkpoints: 20             # was 3 — keep 20 milestones (~6.5 GB total).
+                                    # 5-day run produces ~30 checkpoints; with 20
+                                    # retained we keep ~3.5 days of history. For
+                                    # the current run, use scripts/preserve_
+                                    # checkpoints.sh as a hot-fix.
+  max_train_hours: 0               # Round-6 (2026-05-02): wallclock cap disabled.
+                                    # Run only stops at step==config.steps (=4.5e5).
+                                    # dreamer.py:475-478 maps 0 → _max_secs=inf, so
+                                    # the wall-clock check at line 524 never fires
+                                    # and progress prints fall to step-based branch
+                                    # at line 508-515 (% of 450000).
+  use_cost: True
+  cost_limit: 0.5                  # was 2.0 — tighter target so PID ψ goes positive
+  cost_weight: 30.0                # was 10.0 — WM head weighs cost-event prediction harder
+  grad_heads: ['decoder', 'reward', 'cont', 'cost']
+  encoder: {mlp_keys: '.*', cnn_keys: '$^', mlp_layers: 5, mlp_units: 1024, symlog_inputs: True}
+  decoder: {mlp_keys: '.*', cnn_keys: '$^', mlp_layers: 5, mlp_units: 1024, vector_dist: symlog_mse}
+  actor: {dist: 'normal', entropy: 1e-3, min_std: 0.2}
+  imag_gradient: 'dynamics'
